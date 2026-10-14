@@ -7,7 +7,7 @@ APP="build/Sit Reminder.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp Info.plist "$APP/Contents/Info.plist"
-swiftc -O main.swift -o "$APP/Contents/MacOS/SitReminder"
+swiftc -O -target "$(uname -m)-apple-macos13" main.swift -o "$APP/Contents/MacOS/SitReminder"
 codesign --force -s - "$APP"
 
 mkdir -p ~/Applications

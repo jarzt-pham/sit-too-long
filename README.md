@@ -19,11 +19,12 @@ The menu bar shows a standing figure and the minutes left until your next break 
 | Test reminder now | Fire a reminder immediately |
 | I just stood up (reset) | Reset the counter to 0 |
 | Pause / Resume | Stop or continue counting |
+| Launch at login | Start the app automatically when you log in |
 | Quit | Exit the app |
 
 ## Install
 
-Requires macOS 12+ and the Xcode Command Line Tools (`xcode-select --install`).
+Requires macOS 13+ and the Xcode Command Line Tools (`xcode-select --install`).
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jarzt-pham/sit-too-long/main/install.sh | bash
@@ -44,7 +45,7 @@ open ~/Applications/"Sit Reminder.app"
 
 ### Start at login
 
-System Settings → General → Login Items → **+** → choose `~/Applications/Sit Reminder.app`.
+Tick **Launch at login** in the menu. If macOS asks for approval, enable **Sit Reminder** in System Settings → General → Login Items.
 
 ## Troubleshooting
 

@@ -1,4 +1,5 @@
 import Cocoa
+import ServiceManagement
 import UserNotifications
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotificationCenterDelegate {
@@ -126,6 +127,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         addItem("I just stood up (reset)", #selector(resetCounter), key: "r")
         addItem(paused ? "Resume" : "Pause", #selector(togglePause), key: "p")
         menu.addItem(.separator())
+        addItem("Launch at login", #selector(toggleLaunchAtLogin), key: "")
+        menu.items.last?.state = SMAppService.mainApp.status == .enabled ? .on : .off
         addItem("Quit", #selector(quit), key: "q")
     }
 
@@ -175,6 +178,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         paused.toggle()
         lastTick = Date()
         updateTitle()
+    }
+
+    @objc private func toggleLaunchAtLogin() {
+        let service = SMAppService.mainApp
+        do {
+            if service.status == .enabled {
+                try service.unregister()
+            } else {
+                try service.register()
+            }
+        } catch {
+            NSApp.activate(ignoringOtherApps: true)
+            let alert = NSAlert()
+            alert.messageText = "Could not change Launch at login"
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+        }
+        if service.status == .requiresApproval {
+            SMAppService.openSystemSettingsLoginItems()
+        }
     }
 
     @objc private func quit() {
