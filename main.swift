@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     /// No keyboard/mouse input for this long (or the Mac slept) = you got up, so the counter resets.
     private let awayResetSeconds: TimeInterval = 5 * 60
     private let presetMinutes = [20, 30, 40, 45, 60, 90]
+    private let reminderSound = NSSound(named: "Glass")
 
     private var intervalMinutes: Int {
         get {
@@ -63,6 +64,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     }
 
     private func sendReminder() {
+        // Played by the app itself so it is heard even when Focus/Do Not Disturb hides the banner.
+        reminderSound?.play()
         let center = UNUserNotificationCenter.current()
         center.getNotificationSettings { settings in
             DispatchQueue.main.async {
@@ -73,7 +76,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
                 let content = UNMutableNotificationContent()
                 content.title = "Time to stand up 🧍"
                 content.body = "You've been sitting for \(self.intervalMinutes) minutes. Stand up and walk around for a few minutes."
-                content.sound = .default
                 center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
             }
         }
@@ -90,7 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        completionHandler([.banner, .sound])
+        completionHandler([.banner])
     }
 
     // MARK: - Menu
@@ -120,6 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         intervalItem.submenu = intervalMenu
         menu.addItem(intervalItem)
 
+        addItem("Test reminder now", #selector(testReminder), key: "t")
         addItem("I just stood up (reset)", #selector(resetCounter), key: "r")
         addItem(paused ? "Resume" : "Pause", #selector(togglePause), key: "p")
         menu.addItem(.separator())
@@ -157,6 +160,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             error.messageText = "Please enter a whole number between 1 and 480."
             error.runModal()
         }
+    }
+
+    @objc private func testReminder() {
+        sendReminder()
     }
 
     @objc private func resetCounter() {
