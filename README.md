@@ -8,7 +8,7 @@ The menu bar shows a standing figure and the minutes left until your next break 
 
 - It counts how long you have been **actively using** your Mac.
 - No keyboard/mouse input for **5 minutes**, or the Mac goes to sleep → it assumes you got up and resets the counter.
-- When the counter reaches your interval (default **40 minutes**), it plays a sound, shows a notification and starts counting again.
+- When the counter reaches your interval (default **40 minutes**), it plays a sound and shows a notification. It keeps counting (the menu bar shows how long you are overdue, e.g. `+7m`) until you click the notification, choose **I just stood up**, or step away for 5 minutes.
 
 ## Menu
 

@@ -9,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     private var sittingSeconds: TimeInterval = 0
     private var lastTick = Date()
     private var paused = false
+    /// The reminder for the current sitting session was sent; keep counting until the user stands up.
+    private var reminded = false
 
     /// No keyboard/mouse input for this long (or the Mac slept) = you got up, so the counter resets.
     private let awayResetSeconds: TimeInterval = 5 * 60
@@ -47,21 +49,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
 
         let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
         if idle >= awayResetSeconds || elapsed >= awayResetSeconds {
-            sittingSeconds = 0
+            if sittingSeconds > 0 { standUp() }
         } else {
             sittingSeconds += elapsed
         }
 
-        if sittingSeconds >= TimeInterval(intervalMinutes * 60) {
-            sittingSeconds = 0
+        if sittingSeconds < TimeInterval(intervalMinutes * 60) {
+            reminded = false
+        } else if !reminded {
+            reminded = true
             sendReminder()
         }
         updateTitle()
     }
 
+    /// The user got up: start a new sitting session and clear the reminder that is still on screen.
+    private func standUp() {
+        sittingSeconds = 0
+        reminded = false
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+        updateTitle()
+    }
+
     private func updateTitle() {
-        let remaining = max(0, intervalMinutes - Int(sittingSeconds / 60))
-        statusItem.button?.title = paused ? " paused" : " \(remaining)m"
+        let remaining = intervalMinutes - Int(sittingSeconds / 60)
+        // Past the interval it shows how long you are overdue, e.g. "+7m".
+        statusItem.button?.title = paused ? " paused" : remaining > 0 ? " \(remaining)m" : " +\(-remaining)m"
     }
 
     private func sendReminder() {
@@ -89,6 +102,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         alert.messageText = "Time to stand up 🧍"
         alert.informativeText = "You've been sitting for \(intervalMinutes) minutes. Stand up and walk around for a few minutes."
         alert.runModal()
+        standUp()
+    }
+
+    /// Clicking the reminder notification means "OK, I'm standing up".
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        DispatchQueue.main.async { self.standUp() }
+        completionHandler()
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
@@ -170,8 +191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     }
 
     @objc private func resetCounter() {
-        sittingSeconds = 0
-        updateTitle()
+        standUp()
     }
 
     @objc private func togglePause() {
