@@ -1,6 +1,6 @@
 # Sit Too Long
 
-A tiny macOS menu bar app that reminds you to stand up and walk around after sitting at your Mac for too long.
+A tiny macOS menu bar app that reminds you to stand up and walk around after sitting at your Mac for too long, and to drink water regularly.
 
 The menu bar shows a standing figure and the minutes left until your next break (e.g. `🧍 32m`). When time is up, you hear a sound and get a notification: *"Time to stand up — walk around for a few minutes."*
 
@@ -9,14 +9,17 @@ The menu bar shows a standing figure and the minutes left until your next break 
 - It counts how long you have been **actively using** your Mac.
 - No keyboard/mouse input for **5 minutes**, or the Mac goes to sleep → it assumes you got up and resets the counter.
 - When the counter reaches your interval (default **40 minutes**), it plays a sound and shows a notification. It keeps counting (the menu bar shows how long you are overdue, e.g. `+7m`) until you click the notification, choose **I just stood up**, or step away for 5 minutes.
+- Separately, every water interval (default **60 minutes**) of awake time it plays a different sound and reminds you to drink a glass of water.
 
 ## Menu
 
 | Item | What it does |
 | --- | --- |
 | Sitting for N min | Current sitting time |
-| Remind every | Pick 20 / 30 / 40 / 45 / 60 / 90 min, or **Custom…** (1–480 min). Saved across restarts |
-| Test reminder now | Fire a reminder immediately |
+| Next water in N min | Time until the next water reminder |
+| Stand up every | Pick 20 / 30 / 40 / 45 / 60 / 90 min, or **Custom…** (1–480 min). Saved across restarts |
+| Drink water every | Pick 30 / 45 / 60 / 90 / 120 min, or **Custom…** (1–480 min). Saved across restarts |
+| Test reminders now | Fire both reminders immediately |
 | I just stood up (reset) | Reset the counter to 0 |
 | Pause / Resume | Stop or continue counting |
 | Launch at login | Start the app automatically when you log in |

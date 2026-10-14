@@ -2,11 +2,36 @@ import Cocoa
 import ServiceManagement
 import UserNotifications
 
+/// The two reminders the app sends. The raw value is also the notification identifier.
+enum Reminder: String {
+    case stand, water
+
+    var minutes: Int {
+        get {
+            let value = UserDefaults.standard.integer(forKey: defaultsKey)
+            return value > 0 ? value : (self == .stand ? 40 : 60)
+        }
+        nonmutating set { UserDefaults.standard.set(newValue, forKey: defaultsKey) }
+    }
+
+    var presets: [Int] { self == .stand ? [20, 30, 40, 45, 60, 90] : [30, 45, 60, 90, 120] }
+    var title: String { self == .stand ? "Time to stand up 🧍" : "Time to drink water 💧" }
+    var body: String {
+        self == .stand
+            ? "You've been sitting for \(minutes) minutes. Stand up and walk around for a few minutes."
+            : "Have a glass of water."
+    }
+    var sound: NSSound? { NSSound(named: self == .stand ? "Glass" : "Bottle") }
+
+    private var defaultsKey: String { self == .stand ? "intervalMinutes" : "waterIntervalMinutes" }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotificationCenterDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
     private var timer: Timer?
     private var sittingSeconds: TimeInterval = 0
+    private var waterSeconds: TimeInterval = 0
     private var lastTick = Date()
     private var paused = false
     /// The reminder for the current sitting session was sent; keep counting until the user stands up.
@@ -14,16 +39,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
 
     /// No keyboard/mouse input for this long (or the Mac slept) = you got up, so the counter resets.
     private let awayResetSeconds: TimeInterval = 5 * 60
-    private let presetMinutes = [20, 30, 40, 45, 60, 90]
-    private let reminderSound = NSSound(named: "Glass")
-
-    private var intervalMinutes: Int {
-        get {
-            let value = UserDefaults.standard.integer(forKey: "intervalMinutes")
-            return value > 0 ? value : 40
-        }
-        set { UserDefaults.standard.set(newValue, forKey: "intervalMinutes") }
-    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let center = UNUserNotificationCenter.current()
@@ -53,12 +68,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         } else {
             sittingSeconds += elapsed
         }
+        // Water is due on a fixed period of awake time, whether or not you are at the keyboard.
+        if elapsed < awayResetSeconds {
+            waterSeconds += elapsed
+        }
 
-        if sittingSeconds < TimeInterval(intervalMinutes * 60) {
+        if sittingSeconds < TimeInterval(Reminder.stand.minutes * 60) {
             reminded = false
         } else if !reminded {
             reminded = true
-            sendReminder()
+            send(.stand)
+        }
+        if waterSeconds >= TimeInterval(Reminder.water.minutes * 60) {
+            waterSeconds = 0
+            send(.water)
         }
         updateTitle()
     }
@@ -67,48 +90,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     private func standUp() {
         sittingSeconds = 0
         reminded = false
-        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [Reminder.stand.rawValue])
         updateTitle()
     }
 
     private func updateTitle() {
-        let remaining = intervalMinutes - Int(sittingSeconds / 60)
+        let remaining = Reminder.stand.minutes - Int(sittingSeconds / 60)
         // Past the interval it shows how long you are overdue, e.g. "+7m".
         statusItem.button?.title = paused ? " paused" : remaining > 0 ? " \(remaining)m" : " +\(-remaining)m"
     }
 
-    private func sendReminder() {
+    private func send(_ reminder: Reminder) {
         // Played by the app itself so it is heard even when Focus/Do Not Disturb hides the banner.
-        reminderSound?.play()
+        reminder.sound?.play()
         let center = UNUserNotificationCenter.current()
         center.getNotificationSettings { settings in
             DispatchQueue.main.async {
                 guard settings.authorizationStatus == .authorized else {
-                    self.showReminderAlert()
+                    self.showAlert(for: reminder)
                     return
                 }
                 let content = UNMutableNotificationContent()
-                content.title = "Time to stand up 🧍"
-                content.body = "You've been sitting for \(self.intervalMinutes) minutes. Stand up and walk around for a few minutes."
-                center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+                content.title = reminder.title
+                content.body = reminder.body
+                center.add(UNNotificationRequest(identifier: reminder.rawValue, content: content, trigger: nil))
             }
         }
     }
 
     /// Fallback when notifications are not allowed in System Settings.
-    private func showReminderAlert() {
+    private func showAlert(for reminder: Reminder) {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "Time to stand up 🧍"
-        alert.informativeText = "You've been sitting for \(intervalMinutes) minutes. Stand up and walk around for a few minutes."
+        alert.messageText = reminder.title
+        alert.informativeText = reminder.body
         alert.runModal()
-        standUp()
+        if reminder == .stand { standUp() }
     }
 
-    /// Clicking the reminder notification means "OK, I'm standing up".
+    /// Clicking the stand-up notification means "OK, I'm standing up".
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
-        DispatchQueue.main.async { self.standUp() }
+        if response.notification.request.identifier == Reminder.stand.rawValue {
+            DispatchQueue.main.async { self.standUp() }
+        }
         completionHandler()
     }
 
@@ -123,28 +148,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         menu.removeAllItems()
 
         let sat = Int(sittingSeconds / 60)
-        menu.addItem(NSMenuItem(title: "Sitting for \(sat) min (reminder every \(intervalMinutes) min)", action: nil, keyEquivalent: ""))
+        let waterLeft = max(0, Reminder.water.minutes - Int(waterSeconds / 60))
+        menu.addItem(NSMenuItem(title: "Sitting for \(sat) min (reminder every \(Reminder.stand.minutes) min)", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Next water in \(waterLeft) min", action: nil, keyEquivalent: ""))
         menu.addItem(.separator())
 
-        let intervalItem = NSMenuItem(title: "Remind every", action: nil, keyEquivalent: "")
-        let intervalMenu = NSMenu()
-        for minutes in presetMinutes {
-            let item = NSMenuItem(title: "\(minutes) min", action: #selector(selectPreset(_:)), keyEquivalent: "")
-            item.target = self
-            item.tag = minutes
-            item.state = minutes == intervalMinutes ? .on : .off
-            intervalMenu.addItem(item)
-        }
-        intervalMenu.addItem(.separator())
-        let custom = NSMenuItem(title: presetMinutes.contains(intervalMinutes) ? "Custom…" : "Custom (\(intervalMinutes) min)…",
-                                action: #selector(selectCustom), keyEquivalent: "")
-        custom.target = self
-        custom.state = presetMinutes.contains(intervalMinutes) ? .off : .on
-        intervalMenu.addItem(custom)
-        intervalItem.submenu = intervalMenu
-        menu.addItem(intervalItem)
-
-        addItem("Test reminder now", #selector(testReminder), key: "t")
+        addIntervalMenu("Stand up every", for: .stand)
+        addIntervalMenu("Drink water every", for: .water)
+        addItem("Test reminders now", #selector(testReminders), key: "t")
         addItem("I just stood up (reset)", #selector(resetCounter), key: "r")
         addItem(paused ? "Resume" : "Pause", #selector(togglePause), key: "p")
         menu.addItem(.separator())
@@ -159,17 +170,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         menu.addItem(item)
     }
 
+    private func addIntervalMenu(_ title: String, for reminder: Reminder) {
+        let current = reminder.minutes
+        let submenu = NSMenu()
+        for minutes in reminder.presets {
+            let item = NSMenuItem(title: "\(minutes) min", action: #selector(selectPreset(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = minutes
+            item.representedObject = reminder.rawValue
+            item.state = minutes == current ? .on : .off
+            submenu.addItem(item)
+        }
+        submenu.addItem(.separator())
+        let isCustom = !reminder.presets.contains(current)
+        let custom = NSMenuItem(title: isCustom ? "Custom (\(current) min)…" : "Custom…",
+                                action: #selector(selectCustom(_:)), keyEquivalent: "")
+        custom.target = self
+        custom.representedObject = reminder.rawValue
+        custom.state = isCustom ? .on : .off
+        submenu.addItem(custom)
+
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        menu.addItem(item)
+    }
+
     @objc private func selectPreset(_ sender: NSMenuItem) {
-        intervalMinutes = sender.tag
+        guard let reminder = (sender.representedObject as? String).flatMap(Reminder.init(rawValue:)) else { return }
+        reminder.minutes = sender.tag
         updateTitle()
     }
 
-    @objc private func selectCustom() {
+    @objc private func selectCustom(_ sender: NSMenuItem) {
+        guard let reminder = (sender.representedObject as? String).flatMap(Reminder.init(rawValue:)) else { return }
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "Remind me every … minutes"
+        alert.messageText = reminder == .stand ? "Remind me to stand up every … minutes" : "Remind me to drink water every … minutes"
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
-        field.stringValue = String(intervalMinutes)
+        field.stringValue = String(reminder.minutes)
         alert.accessoryView = field
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Cancel")
@@ -177,7 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
         if let minutes = Int(field.stringValue.trimmingCharacters(in: .whitespaces)), (1...480).contains(minutes) {
-            intervalMinutes = minutes
+            reminder.minutes = minutes
             updateTitle()
         } else {
             let error = NSAlert()
@@ -186,8 +224,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         }
     }
 
-    @objc private func testReminder() {
-        sendReminder()
+    @objc private func testReminders() {
+        send(.stand)
+        send(.water)
     }
 
     @objc private func resetCounter() {
